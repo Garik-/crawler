@@ -1,3 +1,9 @@
+/**
+ * @author Gar|k <garik.djan@gmail.com>
+ * @copyright (c) 2015, http://c0dedgarik.blogspot.ru/
+ * @version 0.2
+ */
+ 
 #include "main.h"
 
 #include <pthread.h>
