@@ -1,8 +1,7 @@
-/* 
- * File:   easy.c
- * Author: Gar|l
- *
- * Created on 14 Сентябрь 2015 г., 22:47
+/**
+ * @author Gar|k <garik.djan@gmail.com>
+ * @copyright (c) 2015, http://c0dedgarik.blogspot.ru/
+ * @version 0.2
  *
  * С этого все начиналось. Но программа работает не так быстро и оптимально как хотелось бы
  * это сейчас я узнал про libev, libuv и https://github.com/h2o/picohttpparser
