@@ -24,10 +24,10 @@ CLEAN_SUBPROJECTS=${CLEAN_SUBPROJECTS_${SUBPROJECTS}}
 
 
 # Project Name
-PROJECTNAME=test_libevent
+PROJECTNAME=crawler
 
 # Active Configuration
-DEFAULTCONF=Debug
+DEFAULTCONF=Release
 CONF=${DEFAULTCONF}
 
 # All Configurations
