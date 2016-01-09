@@ -11,7 +11,6 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <sys/socket.h>
-#include <sys/mman.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netdb.h>
@@ -23,7 +22,7 @@
 #include <syslog.h>  /* for syslog() */
 #include <fcntl.h> /* для неблокируемых сокетов */
 #include <assert.h>
-
+#include <pthread.h>
 
 #include "picohttpparser.h"
 
@@ -39,12 +38,10 @@
 
 #define EVARES_MAXIO 8
 #define MAXLINE  4096 /* максимальная длина текстовой строки */
-#define MAXURL 2048
 
 #define MAXCONTIME 3.0 // in seconds
 #define MAXRECVTIME 3.0 // in seconds
-#define MAXDNSTIME 3.0 // in seconds
-
+#define MAXDNSTIME 2 // in seconds
 
 char http_get[] = "GET /includes/init.php HTTP/1.1\r\n\
 Host: %s\r\n\
@@ -54,8 +51,8 @@ User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Geck
 \r\n";
 
 typedef struct {
-    struct ev_io io;
-    struct ev_timer tw;
+    ev_io io;
+    ev_timer tw;
     struct ev_loop * loop;
 
     struct {
@@ -66,22 +63,11 @@ typedef struct {
 } ev_ares;
 
 typedef struct {
-    struct ev_io io;
-    struct ev_timer tw;
+    ev_io io;
+    ev_timer tw;
     ev_ares *eares;
     char * host;
-
 } ev_connect;
-
-typedef struct {
-    ev_ares *eares;
-    char * domain;
-} dns_data;
-
-typedef struct {
-    struct ev_timer tw;
-    struct ev_loop * loop;
-} loop_timer;
 
 static void err_doit(int, int, const char *, va_list);
 
@@ -166,96 +152,44 @@ Fcntl(int fd, int cmd, int arg) {
     return (n);
 }
 
-inline static int 
-set_sockopt(const int sockfd) {
-    int n = 0;
-    
-    /*int optval = 1;
-    socklen_t optlen = sizeof(optval);
-    if((n = setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen)) < 0)
-    {
-        close(sockfd);
-        err_sys("setsockopt");
-    }
-    
-    struct timeval tv;
-    bzero(&tv,sizeof(struct timeval));
-    tv.tv_sec = MAXRECVTIME;
-    
-    if((n = setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(struct timeval))) < 0)
-    {
-        close(sockfd);
-        err_sys("setsockopt");
-    }
-    
-    if((n = setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(struct timeval))) < 0)
-    {
-        close(sockfd);
-        err_sys("setsockopt");
-    }*/
-   
-    
-    int flags = Fcntl(sockfd, F_GETFL, 0);
-    Fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
-    
-    return (n);
-}
-
-static void
+static void 
 ev_ares_io_cb(EV_P_ ev_io *w, int revents) {
-
+    //debug("io cb");
     ev_ares * eares = (ev_ares *) w;
-
-    //debug("ev_ares_io_cb fd %d %d", eares->io.fd, revents);
-
-    struct timeval *tvp, tv;
 
     ares_socket_t rfd = ARES_SOCKET_BAD, wfd = ARES_SOCKET_BAD;
 
     if (revents & EV_READ)
-        rfd = eares->io.fd;
+        rfd = w->fd;
     if (revents & EV_WRITE)
-        wfd = eares->io.fd;
+        wfd = w->fd;
 
-
-    tvp = ares_timeout(eares->ares.channel, &eares->timeout, &tv);
     ares_process_fd(eares->ares.channel, rfd, wfd);
 }
 
-
-
-static void
+static void 
 ev_ares_sock_state_cb(void *data, int s, int read, int write) {
-
-    //debug("[%p] Change state fd %d read:%d write:%d;", data, s, read, write);
-    
-    set_sockopt(s);
-
+    struct timeval *tvp, tv;
+    memset(&tv, 0, sizeof (tv));
     ev_ares * eares = (ev_ares *) data;
-    
+    //if( !ev_is_active( &eares->tw ) && (tvp = ares_timeout(eares->ares.channel, &eares->timeout, &tv)) ) {
+    if (!ev_is_active(&eares->tw) && (tvp = ares_timeout(eares->ares.channel, NULL, &tv))) {
+        double timeout = (double) tvp->tv_sec + (double) tvp->tv_usec / 1.0e6;
+        //debug("Set timeout to %0.8lf", timeout);
+        if (timeout > 0) {
+            //ev_timer_set(&eares->tw,timeout,0.);
+            //ev_timer_start()
+        }
+    }
+    //debug("[%p] Change state fd %d read:%d write:%d; max time: %u.%u (%p)", data, s, read, write, tv.tv_sec, tv.tv_usec, tvp);
     if (ev_is_active(&eares->io) && eares->io.fd != s) return;
-    
     if (read || write) {
         ev_io_set(&eares->io, s, (read ? EV_READ : 0) | (write ? EV_WRITE : 0));
         ev_io_start(eares->loop, &eares->io);
-        //ev_timer_start(eares->loop, &eares->tw);
-       
     } else {
-        //ev_io_stop(eares->loop, &eares->io);
-        
-        
-        if(ev_is_active(&eares->io)) {
-            ev_io_stop(eares->loop, &eares->io);
-        }
-    
-        if(ev_is_pending(&eares->io)) {
-            ev_clear_pending(eares->loop, &eares->io);
-        }
-        
+        ev_io_stop(eares->loop, &eares->io);
         ev_io_set(&eares->io, -1, 0);
-
     }
-
 }
 
 ssize_t /* Read "n" bytes from a descriptor. */
@@ -327,16 +261,8 @@ my_memmem(const char *buf, size_t buflen, const char *pattern, size_t len) {
 static void
 ev_connect_free(ev_connect * con) {
     if (NULL == con) return;
-
+    
     debug("- remove connection %s", con->host);
-    
-    if(ev_is_active(&con->io)) {
-        ev_io_stop(con->eares->loop, &con->io);
-    }
-    
-    if(ev_is_pending(&con->io)) {
-        ev_clear_pending(con->eares->loop, &con->io);
-    }
 
     if (con->io.fd > 0)
         close(con->io.fd);
@@ -344,56 +270,22 @@ ev_connect_free(ev_connect * con) {
     if (NULL != con->host) {
         free(con->host);
     }
-    
-    /*int n = ev_pending_count (con->eares->loop);
-    debug("pending count %d",n);
-    
-    if(0 == n) {
-        ev_invoke_pending (con->eares->loop);
-    }*/
 
     free(con);
-    
-  
 }
 
 static void
 follow_location(const ev_connect *con, const char *location, size_t len);
-
-inline int
-is_valid_location(const char *location, size_t len) {
-    //  "http://1000heads.comhttp://1000HEADS.RU/includes/init.php"
-    int valid = -1;
-    char *p = NULL;
-
-    if (NULL != location) {
-        
-        if (len > 0 && NULL != (p = my_memmem(location, len, "init.php", 8))) {
-
-            if(((p+8) - location) < len) return -1; 
-            
-            if (NULL != (p = my_memmem(location, len, "http://", 7))) {
-                p = p + 7;
-                if (NULL == my_memmem(p, len - (p - location), "http://", 7)) {
-                    if (NULL == my_memmem(p, len - (p - location), "http/", 5)) {
-                        valid = 0;
-                    }
-                }
-            }
-        }
-    }
-
-    return valid;
-}
 
 static void
 recv_handler(struct ev_loop *loop, struct ev_io *watcher, int events) {
     //debug("recv_handler");
 
     ev_connect * con = (ev_connect *) watcher;
-
-
-
+    ev_io_stop(loop, &con->io);
+    ev_timer_stop(loop, &con->tw);
+    
+    
 
     char buf[MAXLINE];
     const char *msg;
@@ -405,21 +297,7 @@ recv_handler(struct ev_loop *loop, struct ev_io *watcher, int events) {
     while (1) {
         rret = readn(con->io.fd, buf + buflen, sizeof (buf) - buflen);
         if (rret <= 0) {
-            
             err_ret("recv socket %s", con->host);
-            
-            if(EAGAIN == errno) {
-                
-                ev_sleep(0.5); // 0.5 seconds
-                
-                /*ev_io_set(&con->io, con->io.fd, EV_READ);
-                ev_io_start(loop, &con->io);
-                ev_timer_start(loop, &con->tw);*/
-                return;
-            }
-            
-           
-            
             break;
         }
         prevbuflen = buflen;
@@ -448,21 +326,11 @@ recv_handler(struct ev_loop *loop, struct ev_io *watcher, int events) {
             case 302:
             {
 
-                debug("msg is %.*s\nstatus is %d\n", (int) msg_len, msg, status);
-              
-                
                 for (i = 0; i != num_headers; ++i) {
-                    
-                    debug("%.*s: %.*s\n", (int) headers[i].name_len, headers[i].name,
-                    (int) headers[i].value_len, headers[i].value);
-                    
                     if (NULL != my_memmem(headers[i].name, headers[i].name_len, "Location", 8)) {
                         follow_location(con, headers[i].value, headers[i].value_len);
                         break;
                     }
-                    
-                    
-                    
                 }
                 break;
             }
@@ -489,10 +357,8 @@ recv_handler(struct ev_loop *loop, struct ev_io *watcher, int events) {
         }*/
     }
 
-    debug("-- %s checked", con->host);
+    debug("-- %s checked",con->host);
 
-    ev_io_stop(loop, &con->io);
-    ev_timer_stop(loop, &con->tw);
     ev_connect_free(con);
 }
 
@@ -510,7 +376,7 @@ connected_handler(struct ev_loop *loop, struct ev_io *watcher, int events) {
     ev_connect * con = (ev_connect *) watcher;
     ev_io_stop(loop, &con->io);
     ev_timer_stop(loop, &con->tw);
-
+    
     debug("-- connected %s", con->host);
 
 
@@ -536,7 +402,6 @@ connected_handler(struct ev_loop *loop, struct ev_io *watcher, int events) {
             ev_timer_start(loop, &con->tw);
 
         } else {
-            err_ret("writen error %s",con->host);
             ev_connect_free(con);
         }
 
@@ -545,51 +410,13 @@ connected_handler(struct ev_loop *loop, struct ev_io *watcher, int events) {
 }
 
 static void
-ev_ares_timeout_cb(struct ev_loop *loop, struct ev_timer *watcher, int events) {
-     ev_ares * eares = (ev_ares *) (((char *) watcher) - offsetof(ev_ares, tw)); // C magic
-     
-     debug("ev_ares_timeout_cb");
-     
-     
-     
-    /* ares_socket_t socks[ARES_GETSOCK_MAXNUM];
-     int bitmap = ares_getsock(&eares->ares.channel, &socks, ARES_GETSOCK_MAXNUM);
-     int r,w;
-     
-     int i;
-     for(i=0;i<ARES_GETSOCK_MAXNUM;i++) {
-         if(socks[i] > 0 && socks[i] != &eares->io.fd) {
-             
-            
-             
-            ev_io_stop(loop, &eares->io);
-            ev_io_set(&eares->io, socks[i], EV_READ);
-            ev_io_start(eares->loop, &eares->io);
-             
-            break;
-            
-         }
-     }*/
-     
-     
-     
-     
-    
-}
-
-static void
-timeout_pending(struct ev_loop *loop, struct ev_timer *watcher, int events) {
-    
-}
-
-static void
 timeout_handler(struct ev_loop *loop, struct ev_timer *watcher, int events) {
     // connection timeout occurred: close the associated socket and bail
-
+    
 
     ev_connect * con = (ev_connect *) (((char *) watcher) - offsetof(ev_connect, tw)); // C magic
-
-    debug("- timeout_handler %s", con->host);
+    
+    debug("- timeout_handler %s",con->host);
 
     ev_io_stop(loop, &con->io);
     ev_io_set(&con->io, -1, 0);
@@ -599,15 +426,14 @@ timeout_handler(struct ev_loop *loop, struct ev_timer *watcher, int events) {
 }
 
 int
-http_client(ev_ares *eares, const char *domain, struct hostent *host) {
+http_client(ev_ares *eares, struct hostent *host) {
 
     struct sockaddr_in servaddr;
     int sockfd = Socket(AF_INET, SOCK_STREAM, 0);
     int n;
-    
-    set_sockopt(sockfd);
 
-    
+    int flags = Fcntl(sockfd, F_GETFL, 0);
+    Fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
 
     bzero(&servaddr, sizeof (servaddr));
     memcpy(&servaddr.sin_addr, host->h_addr_list[0], host->h_length);
@@ -619,7 +445,7 @@ http_client(ev_ares *eares, const char *domain, struct hostent *host) {
         err_sys("malloc");
     }
     //debug("con %p", con);
-    con->host = strdup(domain);
+    con->host = strdup(host->h_name);
     con->eares = eares;
 
     ev_io_init(&con->io, connected_handler, sockfd, EV_WRITE);
@@ -638,34 +464,22 @@ http_client(ev_ares *eares, const char *domain, struct hostent *host) {
 static void
 dns_callback(void *arg, int status, int timeouts, struct hostent *host) {
     //debug("arg: %p", arg);
-    dns_data *data =(dns_data *)arg;
-
     if (!host || status != ARES_SUCCESS) {
         debug("- failed to lookup %s\n", ares_strerror(status));
-
-
         return;
     }
 
     debug("- found address name %s\n", host->h_name);
 
-    if (http_client(data->eares, data->domain, host) < 0) {
+    if (http_client((ev_ares *) arg, host) < 0) {
         err_ret("http_client");
     }
-    
-    free(data->domain);
-    free(data);
 }
 
 void
-check_domain(ev_ares * eares, const char *domain) {
+check_domain(const ev_ares * eares, const char *domain) {
     debug("Check domain %s", domain);
-    
-    dns_data *d = malloc(sizeof(dns_data));
-    d->domain = strdup(domain);
-    d->eares = eares;
-    
-    ares_gethostbyname(eares->ares.channel, domain, AF_INET, dns_callback, (void *) d);
+    ares_gethostbyname(eares->ares.channel, domain, AF_INET, dns_callback, (void *) eares);
 }
 
 static void
@@ -676,13 +490,10 @@ follow_location(const ev_connect * con, const char *location, size_t len) {
     size_t host_len;
 
 
-    if (0 == is_valid_location(location, len) 
-            && phr_parse_host(location, len, (const char **) &host, &host_len) > 0) {
+    if (phr_parse_host(location, len, (const char **)&host, &host_len) > 0) {
 
         host[host_len] = 0;
-        
-        if(0 != strcmp(con->host, host)) // recurcive
-            check_domain(con->eares, host);
+        check_domain(con->eares, host);
 
     }
 
@@ -695,43 +506,26 @@ configure_ares(ev_ares *eares, struct ev_loop *loop) {
 
     eares->loop = loop;
     eares->ares.options.sock_state_cb_data = eares;
-    eares->ares.options.sock_state_cb = ev_ares_sock_state_cb;
-    eares->ares.options.flags = ARES_FLAG_NOCHECKRESP;
     eares->timeout.tv_sec = MAXDNSTIME;
     eares->timeout.tv_usec = 0;
 
+    eares->ares.options.sock_state_cb = ev_ares_sock_state_cb;
     ev_init(&eares->io, ev_ares_io_cb);
-    //ev_timer_init(&eares->tw, ev_ares_timeout_cb, MAXDNSTIME, 0);
 
-    if ((status = ares_init_options(&eares->ares.channel, &eares->ares.options, ARES_OPT_SOCK_STATE_CB|ARES_OPT_FLAGS)) != ARES_SUCCESS) {
+    if ((status = ares_init_options(&eares->ares.channel, &eares->ares.options, ARES_OPT_SOCK_STATE_CB)) != ARES_SUCCESS) {
         err_quit("Ares init error: %s", ares_strerror(status));
     }
 
 }
 
-char *
-parse_csv(char *line, size_t len, ptrdiff_t * line_size) {
-    char * end = memchr(line, '\n', len);
-    *line_size = 0;
-
-    if (NULL != end) {
-        char * separator = memchr(line, ';', end - line);
-        if (NULL != separator) {
-
-            *separator = 0;
-            *line_size = separator - line;
-
-            return ++end;
-        }
-    }
-
-    return NULL;
+static void *
+work_thread(void *vptr_args) {
+    
 }
 
 int
 main(void) {
     struct ev_loop * loop = EV_DEFAULT;
-    loop_timer loop_pending; 
 
     int status;
 
@@ -739,74 +533,16 @@ main(void) {
         err_quit("Ares error: %s", ares_strerror(status));
 
     }
-
-    const size_t page_size = (size_t) sysconf(_SC_PAGESIZE);
-
-    off_t offset = 0;
-    ptrdiff_t buffer_offset = 0;
-    struct stat statbuf;
-
-    size_t pending_requests = 0;
-
-    int fd;
-
-    if ((fd = open("ru_domains.txt", O_RDWR)) < 0) {
-        err_sys("rudomains.txt");
-    }
-
-    if (fstat(fd, &statbuf) < 0 && S_ISREG(statbuf.st_mode)) {
-        close(fd);
-        err_sys("rudomains.txt");
-    }
-
+    
     ev_ares eares;
     configure_ares(&eares, loop);
     
-    loop_pending.loop = loop;
-    ev_timer_init(&loop_pending.tw, timeout_pending, 60., 0.); // 60 seconds
+    check_domain(&eares, "diafan.ru");
+    check_domain(&eares, "google.com");
 
-    while (offset < statbuf.st_size) { // file mapping loop
-        char * buffer = (char *) mmap(0, page_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, offset);
-        if (MAP_FAILED != buffer) {
+    ev_run(loop, 0);
 
-            char * line, *end_line;
-            line = buffer;
-            ptrdiff_t line_size = 0;
 
-            while (NULL != (end_line = parse_csv(line, page_size - (line - buffer), &line_size))) {
-
-                if (line_size > 0 && (line[line_size - 1] == 'U' || line[line_size - 1] == 'u')) {
-
-                    check_domain(&eares, line);
-                    ++pending_requests;
-                    
-                }
-
-                line = end_line;
-
-                if (pending_requests == 10) {
-                    
-                   
-                    //ev_timer_start(loop, &loop_pending.tw);
-                    ev_run(loop, 0);
-                   // ev_timer_stop(loop, &loop_pending);
-                    
-                    pending_requests = 0;
-                  
-                }
-            }
-
-            munmap(buffer, page_size);
-        }
-        offset += page_size;
-    }
-
-    //check_domain(&eares,"diafan.ru");
-    //ev_run(loop, 0);
-
-    close(fd);
-
-    ares_destroy(eares.ares.channel);
     ares_library_cleanup();
 
     return 0;
