@@ -138,6 +138,16 @@ ev_ares_timeout_handler(struct ev_loop *loop, struct ev_timer *watcher, int even
     ev_timer_set(&options->ares.tw, MAXDNSTIME, 0);
     ev_timer_start(options->loop, &options->ares.tw);
     
+    /**
+     ares_process.c
+     * 
+     void ares_process_timeouts(ares_channel channel) {
+        struct timeval now = ares__tvnow();
+        process_timeouts(channel, &now);
+        process_broken_connections(channel, &now);
+    }
+     */
+    
     ares_process_timeouts(options->ares.channel);
     
     errno = ETIMEDOUT;
