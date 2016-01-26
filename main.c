@@ -18,7 +18,6 @@ sig_handler(int signum) {
 
 #define CHECK_TERM() if(0 != sigterm) break;
 
-
 static char *
 parse_csv(char *line, size_t len, ptrdiff_t * line_size) {
     char * end = memchr(line, '\n', len);
@@ -31,8 +30,8 @@ parse_csv(char *line, size_t len, ptrdiff_t * line_size) {
             *separator = 0;
             *line_size = separator - line;
 
-            return ++end;
         }
+        return ++end;
     }
 
     return NULL;
@@ -48,11 +47,14 @@ static long mtime() {
 
 static inline void
 print_stat(options_t *options, const long *time_start) {
-    fprintf(stderr, "\r\nDNS checked domains: %d; found: %d; not found: %d (%d%%); time: %ld milliseconds\n",
+    fprintf(stdout, "\nDNS checked domains: %d; found: %d; not found: %d (%d%%); \
+pending: %d; threads: %d; time: %ld milliseconds\n",
             options->counters.domains,
             options->counters.dnsfound,
             options->counters.dnsnotfound,
             (options->counters.dnsnotfound > 0 ? ((options->counters.dnsnotfound * 100) / options->counters.domains) : 0),
+            MAXPENDING,
+            1,
             mtime() - *time_start);
 }
 
@@ -63,7 +65,6 @@ main(void) {
 
     int status;
     options_t options;
-    domain_t domains[MAXPENDING];
     const size_t page_size = (size_t) sysconf(_SC_PAGESIZE);
     size_t pending_requests = 0;
 
@@ -81,7 +82,7 @@ main(void) {
         if (ARES_SUCCESS == (status = ev_ares_init_options(&options))) {
 
             int fd;
-            if ((fd = open("ru_domains.txt", O_RDWR)) > 0) {
+            if ((fd = open("100.csv", O_RDWR)) > 0) {
 
                 struct stat statbuf;
 
@@ -105,11 +106,8 @@ main(void) {
 
                                 if (line_size > 0 && (line[line_size - 1] == 'U' || line[line_size - 1] == 'u')) {
 
-                                    domains[pending_requests].options = &options;
-                                    domains[pending_requests].domain = line;
-                                    //domains[pending_requests].domain_len = line_size;
-
-                                    ev_ares_gethostbyname(&domains[pending_requests]);
+                                  
+                                    ev_ares_gethostbyname(&options,line);
 
                                     ++pending_requests;
                                 }
@@ -117,6 +115,7 @@ main(void) {
                                 line = end_line;
 
                                 if (pending_requests == MAXPENDING) {
+                                    debug("pending_requests: %d", pending_requests);
                                     ev_run(options.loop, 0);
                                     pending_requests = 0;
                                 }
@@ -124,11 +123,21 @@ main(void) {
                             }
 
                             munmap(buffer, page_size);
+
+                        } else {
+                            err_ret("mmap");
+                            break;
                         }
 
                         CHECK_TERM();
 
                         offset += page_size;
+                    }
+
+                    if (pending_requests > 0) {
+                        debug("pending_requests: %d", pending_requests);
+                        ev_run(options.loop, 0);
+                        pending_requests = 0;
                     }
                 }
 

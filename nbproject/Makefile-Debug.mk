@@ -35,6 +35,8 @@ OBJECTDIR=${CND_BUILDDIR}/${CND_CONF}/${CND_PLATFORM}
 
 # Object Files
 OBJECTFILES= \
+	${OBJECTDIR}/error.o \
+	${OBJECTDIR}/ev_ares.o \
 	${OBJECTDIR}/main.o \
 	${OBJECTDIR}/picohttpparser.o
 
@@ -53,15 +55,25 @@ FFLAGS=
 ASFLAGS=
 
 # Link Libraries and Options
-LDLIBSOPTIONS=-L/usr/local/lib `pkg-config --libs libcares` -lev  
+LDLIBSOPTIONS=-L/usr/local/lib `pkg-config --libs libcares` -lev -lpthread   
 
 # Build Targets
 .build-conf: ${BUILD_SUBPROJECTS}
-	"${MAKE}"  -f nbproject/Makefile-${CND_CONF}.mk ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/test_libev
+	"${MAKE}"  -f nbproject/Makefile-${CND_CONF}.mk ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/crawler_github
 
-${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/test_libev: ${OBJECTFILES}
+${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/crawler_github: ${OBJECTFILES}
 	${MKDIR} -p ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}
-	${LINK.c} -o ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/test_libev ${OBJECTFILES} ${LDLIBSOPTIONS}
+	${LINK.c} -o ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/crawler_github ${OBJECTFILES} ${LDLIBSOPTIONS}
+
+${OBJECTDIR}/error.o: error.c 
+	${MKDIR} -p ${OBJECTDIR}
+	${RM} "$@.d"
+	$(COMPILE.c) -g `pkg-config --cflags libcares`   -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/error.o error.c
+
+${OBJECTDIR}/ev_ares.o: ev_ares.c 
+	${MKDIR} -p ${OBJECTDIR}
+	${RM} "$@.d"
+	$(COMPILE.c) -g `pkg-config --cflags libcares`   -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/ev_ares.o ev_ares.c
 
 ${OBJECTDIR}/main.o: main.c 
 	${MKDIR} -p ${OBJECTDIR}
@@ -79,7 +91,7 @@ ${OBJECTDIR}/picohttpparser.o: picohttpparser.c
 # Clean Targets
 .clean-conf: ${CLEAN_SUBPROJECTS}
 	${RM} -r ${CND_BUILDDIR}/${CND_CONF}
-	${RM} ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/test_libev
+	${RM} ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/crawler_github
 
 # Subprojects
 .clean-subprojects:

@@ -7,12 +7,27 @@
 #include "main.h"
 
 static void
+free_domain(const domain_t *domain) {
+    if (NULL != domain->domain)
+        free(domain->domain);
+    free(domain);
+}
+
+static void
 ev_ares_io_handler(EV_P_ ev_io * watcher, int revents) {
 
     options_t * options = (options_t *) (((char *) watcher) - offsetof(options_t, ares.io));
 
+    ares_socket_t rfd = ARES_SOCKET_BAD, wfd = ARES_SOCKET_BAD;
 
-    fd_set read_fds, write_fds;
+    if (revents & EV_READ)
+        rfd = options->ares.io.fd;
+    if (revents & EV_WRITE)
+        wfd = options->ares.io.fd;
+
+    ares_process_fd(options->ares.channel, rfd, wfd);
+
+    /*fd_set read_fds, write_fds;
     int nfds;
 
     FD_ZERO(&read_fds);
@@ -22,8 +37,7 @@ ev_ares_io_handler(EV_P_ ev_io * watcher, int revents) {
         return;
     }
 
-    ares_process(options->ares.channel, &read_fds, &write_fds);
-
+    ares_process(options->ares.channel, &read_fds, &write_fds); */
 }
 
 static void
@@ -80,11 +94,15 @@ ev_ares_dns_callback(void *arg, int status, int timeouts, struct hostent *host) 
     if (!host || status != ARES_SUCCESS) {
         debug("- failed to lookup %s\n", ares_strerror(status));
         __sync_fetch_and_add(&domain->options->counters.dnsnotfound, 1);
+
+        free_domain(domain);
         return;
     }
 
     debug("- found address name %s\n", host->h_name);
     __sync_fetch_and_add(&domain->options->counters.dnsfound, 1);
+
+    free_domain(domain);
 
     /*if (http_client(data->eares, data->domain, host) < 0) {
         err_ret("http_client");
@@ -104,8 +122,18 @@ ev_ares_init_options(options_t *options) {
 }
 
 void
-ev_ares_gethostbyname(domain_t *domain) {
-    __sync_fetch_and_add(&domain->options->counters.domains, 1);
-    
-    ares_gethostbyname(domain->options->ares.channel, domain->domain, AF_INET, ev_ares_dns_callback, (void *) domain);
+ev_ares_gethostbyname(options_t * options, const char *name) {
+
+    domain_t * domain = (domain_t *) malloc(sizeof (domain_t));
+    if (NULL == domain) {
+        err_ret("ev_ares_gethostbyname");
+        return;
+    }
+
+    domain->options = options;
+    domain->domain = strdup(name);
+
+    __sync_fetch_and_add(&options->counters.domains, 1);
+
+    ares_gethostbyname(options->ares.channel, domain->domain, AF_INET, ev_ares_dns_callback, (void *) domain);
 }

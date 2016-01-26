@@ -9,19 +9,19 @@ CND_DISTDIR=dist
 # Debug configuration
 CND_PLATFORM_Debug=GNU-Linux
 CND_ARTIFACT_DIR_Debug=dist/Debug/GNU-Linux
-CND_ARTIFACT_NAME_Debug=test_libev
-CND_ARTIFACT_PATH_Debug=dist/Debug/GNU-Linux/test_libev
+CND_ARTIFACT_NAME_Debug=crawler_github
+CND_ARTIFACT_PATH_Debug=dist/Debug/GNU-Linux/crawler_github
 CND_PACKAGE_DIR_Debug=dist/Debug/GNU-Linux/package
-CND_PACKAGE_NAME_Debug=testlibev.tar
-CND_PACKAGE_PATH_Debug=dist/Debug/GNU-Linux/package/testlibev.tar
+CND_PACKAGE_NAME_Debug=crawlergithub.tar
+CND_PACKAGE_PATH_Debug=dist/Debug/GNU-Linux/package/crawlergithub.tar
 # Release configuration
 CND_PLATFORM_Release=GNU-Linux
 CND_ARTIFACT_DIR_Release=dist/Release/GNU-Linux
-CND_ARTIFACT_NAME_Release=test_libev
-CND_ARTIFACT_PATH_Release=dist/Release/GNU-Linux/test_libev
+CND_ARTIFACT_NAME_Release=crawler_github
+CND_ARTIFACT_PATH_Release=dist/Release/GNU-Linux/crawler_github
 CND_PACKAGE_DIR_Release=dist/Release/GNU-Linux/package
-CND_PACKAGE_NAME_Release=testlibev.tar
-CND_PACKAGE_PATH_Release=dist/Release/GNU-Linux/package/testlibev.tar
+CND_PACKAGE_NAME_Release=crawlergithub.tar
+CND_PACKAGE_PATH_Release=dist/Release/GNU-Linux/package/crawlergithub.tar
 #
 # include compiler specific variables
 #

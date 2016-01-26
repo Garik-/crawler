@@ -4,12 +4,15 @@
     <logicalFolder name="SourceFiles"
                    displayName="Исходные файлы"
                    projectFiles="true">
+      <itemPath>error.c</itemPath>
+      <itemPath>ev_ares.c</itemPath>
       <itemPath>main.c</itemPath>
       <itemPath>picohttpparser.c</itemPath>
     </logicalFolder>
     <logicalFolder name="HeaderFiles"
                    displayName="Файлы заголовков"
                    projectFiles="true">
+      <itemPath>main.h</itemPath>
       <itemPath>picohttpparser.h</itemPath>
     </logicalFolder>
     <logicalFolder name="ResourceFiles"
@@ -44,10 +47,17 @@
           <linkerLibItems>
             <linkerOptionItem>`pkg-config --libs libcares`</linkerOptionItem>
             <linkerOptionItem>-lev</linkerOptionItem>
+            <linkerLibStdlibItem>PosixThreads</linkerLibStdlibItem>
           </linkerLibItems>
         </linkerTool>
       </compileType>
+      <item path="error.c" ex="false" tool="0" flavor2="0">
+      </item>
+      <item path="ev_ares.c" ex="false" tool="0" flavor2="0">
+      </item>
       <item path="main.c" ex="false" tool="0" flavor2="0">
+      </item>
+      <item path="main.h" ex="false" tool="3" flavor2="0">
       </item>
       <item path="picohttpparser.c" ex="false" tool="0" flavor2="0">
       </item>
@@ -74,7 +84,13 @@
           <developmentMode>5</developmentMode>
         </asmTool>
       </compileType>
+      <item path="error.c" ex="false" tool="0" flavor2="0">
+      </item>
+      <item path="ev_ares.c" ex="false" tool="0" flavor2="0">
+      </item>
       <item path="main.c" ex="false" tool="0" flavor2="0">
+      </item>
+      <item path="main.h" ex="false" tool="3" flavor2="0">
       </item>
       <item path="picohttpparser.c" ex="false" tool="0" flavor2="0">
       </item>

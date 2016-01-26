@@ -36,8 +36,8 @@ extern "C" {
 #define MAXDNSTIME 5. // in seconds
 #define MAXPENDING 10
 
-//#define DEBUG
-    
+#define DEBUG
+
 #ifdef DEBUG
 #define debug(fmt, ...)   do{ \
   fprintf(stderr, "[DEBUG] %s:%d: ", __FILE__, __LINE__); \
@@ -58,7 +58,7 @@ extern "C" {
             struct ares_options options;
 
         } ares;
-        
+
         struct {
             ssize_t domains;
             ssize_t dnsfound;
@@ -67,24 +67,23 @@ extern "C" {
     } options_t;
 
     typedef struct {
-        options_t * options;
-
-        const char *domain;
         //size_t domain_len;
 
         struct ev_io io;
         struct ev_timer tw;
+        options_t * options;
+        char *domain;
     } domain_t;
 
     int
     ev_ares_init_options(options_t *options);
-    
+
     void
-    ev_ares_gethostbyname(domain_t *domain);
-    
+    ev_ares_gethostbyname(options_t * options, const char *name);
+
     void
     err_ret(const char *fmt, ...);
-    
+
     void
     err_quit(const char *fmt, ...);
 
