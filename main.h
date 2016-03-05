@@ -30,6 +30,7 @@ extern "C" {
 #include <assert.h>
 #include <errno.h>
 #include <sys/time.h>
+#include <pthread.h>
 
 
 #define MAXLINE  4096 /* максимальная длина текстовой строки */
@@ -64,6 +65,16 @@ extern "C" {
             ssize_t dnsfound;
             ssize_t dnsnotfound;
         } counters;
+
+        struct {
+            int fd;
+            int out;
+            size_t len;
+        } file;
+
+        int timeout;
+        int pending_requests;
+
     } options_t;
 
     typedef struct {
@@ -86,6 +97,9 @@ extern "C" {
 
     void
     err_quit(const char *fmt, ...);
+
+    void
+    err_sys(const char *fmt, ...);
 
 
 #ifdef __cplusplus

@@ -6,7 +6,7 @@
 
 #include "main.h"
 
-static void
+static inline void
 free_domain(const domain_t *domain) {
     if (NULL != domain->domain)
         free(domain->domain);
@@ -116,7 +116,7 @@ ev_ares_init_options(options_t *options) {
     options->ares.options.flags = ARES_FLAG_NOCHECKRESP;
 
     ev_init(&options->ares.io, ev_ares_io_handler);
-    ev_timer_init(&options->ares.tw, ev_ares_timeout_handler, MAXDNSTIME, 0);
+    ev_timer_init(&options->ares.tw, ev_ares_timeout_handler, options->timeout, 0);
 
     return ares_init_options(&options->ares.channel, &options->ares.options, ARES_OPT_SOCK_STATE_CB | ARES_OPT_FLAGS);
 }
