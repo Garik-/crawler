@@ -1,0 +1,26 @@
+  <html>
+  <head>
+    <title>Gar|k crawler benckmark</title>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script type="text/javascript">
+      google.charts.load('current', {'packages':['corechart']});
+      google.charts.setOnLoadCallback(drawChart);
+
+      function drawChart() {
+        var time_data = google.visualization.arrayToDataTable([["pending_request","time"],[10,4816.6666666667],[20,6110],[30,6738],[40,5827.6666666667],[50,4907.3333333333],[60,6464.3333333333],[70,6682.6666666667],[80,6517],[90,7817],[100,5373.6666666667]]);
+
+        var options = {
+          title: 'request & time (in milliseconds)',
+          legend: { position: 'bottom' }
+        };
+
+        var chart = new google.visualization.LineChart(document.getElementById('time_chart'));
+        chart.draw(time_data, options);
+
+      }
+    </script>
+  </head>
+  <body>
+    <div id="time_chart" style="width: 900px; height: 500px"></div>
+  </body>
+</html>

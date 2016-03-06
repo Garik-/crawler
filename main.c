@@ -54,7 +54,7 @@ print_usage(const char * name) {
 
 static inline void
 print_stat(options_t *options, const long *time_start) {
-    fprintf(stderr, "\nDNS checked domains: %d; found: %d; not found: %d (%d%%); \
+    fprintf(stdout, "DNS checked domains: %d; found: %d; not found: %d (%d%%); \
 pending: %d; threads: %d; time: %ld milliseconds\n",
             options->counters.domains,
             options->counters.dnsfound,
