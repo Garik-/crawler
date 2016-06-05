@@ -6,10 +6,12 @@
 
 #include "main.h"
 
-static inline void
-free_domain(const domain_t *domain) {
-    if (NULL != domain->domain)
+void
+free_domain(const domain_t *domain) {    
+    if (NULL != domain->domain) {
         free(domain->domain);
+    }
+    
     free(domain);
 }
 
@@ -86,7 +88,7 @@ ev_ares_sock_state_callback(void *data, int s, int read, int write) {
     }
 }
 
-static void
+void
 ev_ares_dns_callback(void *arg, int status, int timeouts, struct hostent *host) {
 
     domain_t *domain = (domain_t *) arg;
@@ -102,11 +104,11 @@ ev_ares_dns_callback(void *arg, int status, int timeouts, struct hostent *host) 
     debug("- found address name %s\n", host->h_name);
     __sync_fetch_and_add(&domain->options->counters.dnsfound, 1);
 
-    free_domain(domain);
+    //free_domain(domain);
 
-    /*if (http_client(data->eares, data->domain, host) < 0) {
+    if (http_client(domain, host) < 0) {
         err_ret("http_client");
-    }*/
+    }
 }
 
 int
@@ -132,6 +134,8 @@ ev_ares_gethostbyname(options_t * options, const char *name) {
 
     domain->options = options;
     domain->domain = strdup(name);
+    domain->keep_alive = 1;
+    domain->index_search = 0;
 
     __sync_fetch_and_add(&options->counters.domains, 1);
 

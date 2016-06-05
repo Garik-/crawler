@@ -36,6 +36,9 @@ extern "C" {
 #define MAXLINE  4096 /* максимальная длина текстовой строки */
 #define MAXDNSTIME 5. // in seconds
 #define MAXPENDING 10
+    
+#define MAXCONTIME 3.0 // in seconds
+#define MAXRECVTIME 3.0 // in seconds
 
 #define DEBUG
 
@@ -84,6 +87,8 @@ extern "C" {
         struct ev_timer tw;
         options_t * options;
         char *domain;
+        unsigned int keep_alive;
+        unsigned int index_search;
     } domain_t;
 
     int
@@ -100,6 +105,15 @@ extern "C" {
 
     void
     err_sys(const char *fmt, ...);
+    
+    int
+    http_client(domain_t * domain, struct hostent *host);
+    
+    void
+    free_domain(const domain_t *domain);
+    
+    void
+    ev_ares_dns_callback(void *arg, int status, int timeouts, struct hostent *host);
 
 
 #ifdef __cplusplus
