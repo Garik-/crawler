@@ -16,6 +16,7 @@ extern "C" {
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <sys/socket.h>
 #include <sys/mman.h>
 #include <arpa/inet.h>
@@ -31,6 +32,7 @@ extern "C" {
 #include <errno.h>
 #include <sys/time.h>
 #include <pthread.h>
+
 
 
 #define MAXLINE  4096 /* максимальная длина текстовой строки */
@@ -67,6 +69,8 @@ extern "C" {
             ssize_t domains;
             ssize_t dnsfound;
             ssize_t dnsnotfound;
+            ssize_t cmsfound;
+            ssize_t follow;
         } counters;
 
         struct {
@@ -87,6 +91,7 @@ extern "C" {
         struct ev_timer tw;
         options_t * options;
         char *domain;
+        struct sockaddr_in servaddr;
         unsigned int keep_alive;
         unsigned int index_search;
     } domain_t;
@@ -107,7 +112,7 @@ extern "C" {
     err_sys(const char *fmt, ...);
     
     int
-    http_client(domain_t * domain, struct hostent *host);
+    http_client(domain_t * domain);
     
     void
     free_domain(const domain_t *domain);

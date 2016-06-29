@@ -54,12 +54,15 @@ print_usage(const char * name) {
 
 static inline void
 print_stat(options_t *options, const long *time_start) {
-    fprintf(stdout, "DNS checked domains: %d; found: %d; not found: %d (%d%%); \
+    fprintf(stdout, "DNS checked domains: %d; found: %d; not found: %d (%d%%);\n\
+CMS fonud: %d; follow location: %d\n\
 pending: %d; threads: %d; time: %ld milliseconds\n",
             options->counters.domains,
             options->counters.dnsfound,
             options->counters.dnsnotfound,
             (options->counters.dnsnotfound > 0 ? ((options->counters.dnsnotfound * 100) / options->counters.domains) : 0),
+            options->counters.cmsfound,
+            options->counters.follow,
             options->pending_requests,
             1,
             mtime() - *time_start);

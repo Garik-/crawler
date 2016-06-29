@@ -60,7 +60,7 @@ ev_ares_timeout_handler(struct ev_loop *loop, struct ev_timer *watcher, int even
         process_timeouts(channel, &now);
         process_broken_connections(channel, &now);
     }
-     */
+     */ 
 
     ares_process_timeouts(options->ares.channel);
 
@@ -105,8 +105,13 @@ ev_ares_dns_callback(void *arg, int status, int timeouts, struct hostent *host) 
     __sync_fetch_and_add(&domain->options->counters.dnsfound, 1);
 
     //free_domain(domain);
+    
+    bzero(&domain->servaddr, sizeof(domain->servaddr));
+    memcpy(&domain->servaddr.sin_addr, host->h_addr_list[0], host->h_length);
+    domain->servaddr.sin_family = AF_INET;
+    domain->servaddr.sin_port = htons(80);
 
-    if (http_client(domain, host) < 0) {
+    if (http_client(domain) < 0) {
         err_ret("http_client");
     }
 }
