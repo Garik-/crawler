@@ -197,7 +197,7 @@ recv_handler(struct ev_loop *loop, struct ev_io *watcher, int events) {
 
         int pret = parse_response(domain);
 
-        debug("parse_response %d", pret);
+        debug("parse_response %s:%d", domain->domain,pret);
 
         if (pret > 0) {
 
@@ -341,10 +341,13 @@ http_client(domain_t * domain) {
     return 0;
 }
 
-inline bool
-is_valid_location(const char *location, size_t len) {
+bool
+is_valid_location(const domain_t *domain, const char *location, size_t len) {
     // "http://1000heads.comhttp://1000HEADS.RU/includes/init.php" 
     bool valid = false;
+    char buffer[MAXLINE];
+    size_t s = 0 ;
+   
 
     if (NULL != location) {
         if (len > 0 && location[len - 1] != '/' && NULL != my_memmem(location, len, ".php", 4)) {
@@ -369,8 +372,13 @@ is_valid_location(const char *location, size_t len) {
                 valid = false;
                 int i = 0;
                 for (i = 0; i < sizeof (search_path) / sizeof (search_path[0]); i++) {
-                    size_t s = strlen(search_path[i]);
-                    if (NULL != my_memmem(location, len, search_path[i], s)) {
+                     s = snprintf(buffer, sizeof (buffer),
+                        "%s%s", domain->domain, search_path[i]);
+                     
+                    //debug("-- %s --", buffer[s-1]);
+                     
+                     
+                    if (NULL != my_memmem(location, len, buffer, s) && location[len-1] == buffer[s-1]) {
                         valid = true;
                         break;
                     }
@@ -393,19 +401,26 @@ follow_location(domain_t * domain, const char *location, size_t len) {
 
     __sync_fetch_and_add(&domain->options->counters.follow, 1);
 
-    char *host;
+    char *host; char c;
     size_t host_len;
 
-    if (false == is_valid_location(location, len)) {
-        free_domain(domain);
-        return;
-    }
+
 
     if (phr_parse_host(location, len, &host, &host_len) > 0) {
-        host[host_len] = 0;
+        
         free(domain->domain);
 
+        c = host[host_len];
+        host[host_len] = 0;
+        
         domain->domain = strdup(host);
+        
+        host[host_len] = c;
+        
+        if (false == is_valid_location(domain, location, len)) {
+            free_domain(domain);
+            return;
+        }
 
         ares_gethostbyname(domain->options->ares.channel, domain->domain, AF_INET, ev_ares_dns_callback, (void *) domain);
     }
