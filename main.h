@@ -33,7 +33,7 @@ extern "C" {
 #include <sys/time.h>
 #include <pthread.h>
 
-
+#include "picohttpparser.h"
 
 #define MAXLINE  4096 /* максимальная длина текстовой строки */
 #define MAXDNSTIME 5. // in seconds
@@ -71,11 +71,13 @@ extern "C" {
             ssize_t dnsnotfound;
             ssize_t cmsfound;
             ssize_t follow;
+            ssize_t error_parse;
         } counters;
 
         struct {
             int fd;
             int out;
+            int parse;
             size_t len;
         } file;
 
@@ -91,8 +93,17 @@ extern "C" {
         struct ev_timer tw;
         options_t * options;
         char *domain;
+        struct {
+            char buffer[MAXLINE];
+            size_t len;
+        } data;
+        struct {
+            struct phr_header headers[16];
+            size_t num_headers;
+            unsigned int status;
+        } http;
         struct sockaddr_in servaddr;
-        unsigned int keep_alive;
+        //unsigned int keep_alive;
         unsigned int index_search;
     } domain_t;
 

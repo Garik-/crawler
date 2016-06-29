@@ -7,7 +7,10 @@
 #include "main.h"
 
 void
-free_domain(const domain_t *domain) {    
+free_domain(const domain_t *domain) {   
+    
+    debug("-- free domain %s",domain->domain);
+    
     if (NULL != domain->domain) {
         free(domain->domain);
     }
@@ -139,7 +142,6 @@ ev_ares_gethostbyname(options_t * options, const char *name) {
 
     domain->options = options;
     domain->domain = strdup(name);
-    domain->keep_alive = 1;
     domain->index_search = 0;
 
     __sync_fetch_and_add(&options->counters.domains, 1);

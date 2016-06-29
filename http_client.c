@@ -5,7 +5,7 @@
  */
 
 #include "main.h"
-#include "picohttpparser.h"
+
 
 char http_get[] = "GET %s HTTP/1.1\r\n\
 Host: %s\r\n\
@@ -14,7 +14,7 @@ Accept: text/plain,text/html;q=0.9\r\n\
 User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.106 Safari/537.36\r\n\
 \r\n";
 
-char search_path[][256]={"/includes/init.php","/modules/clauses/clauses.sitemap.php?start=1","/plugins/kcaptcha/kcaptcha.php?kcaptcha=1"};
+char search_path[][256] = {"/includes/init.php", "/modules/clauses/clauses.sitemap.php?start=1", "/plugins/kcaptcha/kcaptcha.php?kcaptcha=1"};
 
 static void write_callback(struct ev_loop *loop, domain_t * domain);
 
@@ -106,94 +106,140 @@ static void
 success_checked(const domain_t *domain) {
     char buffer[MAXLINE];
     size_t len;
-    
+
     debug("%s FOUND\n", domain->domain);
     __sync_fetch_and_add(&domain->options->counters.cmsfound, 1);
-    
-    len = snprintf(buffer,sizeof(buffer),
+
+    len = snprintf(buffer, sizeof (buffer),
             "%s%s;\n", domain->domain, search_path[domain->index_search]);
-    
+
     writen(domain->options->file.out, buffer, len);
 }
 
 static void
-recv_handler(struct ev_loop *loop, struct ev_io *watcher, int events) {
-    //debug("recv_handler");
+error_parse(const domain_t *domain) {
+    char buffer[MAXLINE];
+    size_t len;
 
-    domain_t *domain = (domain_t *) watcher;
-    ev_io_stop(loop, &domain->io);
-    ev_timer_stop(loop, &domain->tw);
+    debug("error_parse %s", domain->domain);
+    __sync_fetch_and_add(&domain->options->counters.error_parse, 1);
 
-    char buf[MAXLINE], *msg;
+    len = snprintf(buffer, sizeof (buffer),
+            "%s;\n", domain->domain);
+
+    writen(domain->options->file.parse, buffer, len);
+}
+
+static int
+parse_response(domain_t *domain) {
+
+
+
     int pret = -1, minor_version, status, i;
-    size_t msg_len, num_headers, buflen = 0, prevbuflen = 0;
-    struct phr_header headers[100];
+    size_t msg_len, buflen = domain->data.len, prevbuflen = 0, num_headers;
     ssize_t rret;
+    char *msg;
+
+    num_headers = sizeof (domain->http.headers) / sizeof (domain->http.headers[0]);
 
     while (1) {
-        rret = readn(domain->io.fd, buf + buflen, sizeof (buf) - buflen);
-        if (rret <= 0) {
-            err_ret("recv socket %s", domain->domain);
-            break;
-        }
-        prevbuflen = buflen;
-        buflen += rret;
+        pret = phr_parse_response(domain->data.buffer, buflen, &minor_version, &status, &msg, &msg_len, domain->http.headers, &num_headers, prevbuflen);
 
-        num_headers = sizeof (headers) / sizeof (headers[0]);
-        pret = phr_parse_response(buf, buflen, &minor_version, &status, &msg, &msg_len, headers, &num_headers, prevbuflen);
+        domain->http.num_headers = num_headers;
+        domain->http.status = status;
 
         if (pret > 0)
-            break; /* successfully parsed the request */
+            break;
 
         else if (pret == -1) { // ParseError;
             break;
         }
 
         assert(pret == -2);
-        if (buflen == sizeof (buf)) { // RequestIsTooLongError
+        if (buflen == sizeof (domain->data.buffer)) { // RequestIsTooLongError
             break;
         }
     }
 
-    if (pret > 0) {
+    return pret;
+}
 
-        switch (status) {
-            case 301:
-            case 302:
-            {
+static void
+recv_handler(struct ev_loop *loop, struct ev_io *watcher, int events) {
+    //debug("recv_handler");
 
-                for (i = 0; i != num_headers; ++i) {
-                    if (NULL != my_memmem(headers[i].name, headers[i].name_len, "Location", 8)) {
-                        follow_location(domain, headers[i].value, headers[i].value_len);
-                        return;
-                        //break;
+    int i;
+
+    domain_t *domain = (domain_t *) watcher;
+    ev_io_stop(loop, &domain->io);
+    ev_timer_stop(loop, &domain->tw);
+
+
+    //debug("recv_header %s -- data buffer:%p; data len: %d", domain->domain, domain->data.buffer + domain->data.len, domain->data.len);
+
+
+    ssize_t len = readn(domain->io.fd, domain->data.buffer + domain->data.len, sizeof (domain->data.buffer) - domain->data.len);
+
+    if (len <= 0) {
+        if (EAGAIN == errno) { // сокет занят буфер кончился и прочее
+            //err_ret("error read socket %s: ", domain->domain);
+            ev_io_start(loop, &domain->io);
+            ev_timer_start(loop, &domain->tw);
+            return;
+        } else { // жесткая ошибка
+            err_ret("error read socket %s: ", domain->domain);
+            free_domain(domain);
+            return;
+        }
+    } else {
+
+        domain->data.len += len;
+
+        int pret = parse_response(domain);
+
+        debug("parse_response %d", pret);
+
+        if (pret > 0) {
+
+            switch (domain->http.status) {
+                case 301:
+                case 302:
+                {
+
+                    for (i = 0; i != domain->http.num_headers; ++i) {
+                        if (NULL != my_memmem(domain->http.headers[i].name, domain->http.headers[i].name_len, "Location", 8)) {
+                            follow_location(domain, domain->http.headers[i].value, domain->http.headers[i].value_len);
+                            return;
+                            //break;
+                        }
                     }
+                    break;
                 }
-                break;
-            }
 
-            case 200:
-            {
-                if (NULL != my_memmem(&buf[pret], buflen - pret, "diafan", 6) || NULL != my_memmem(&buf[pret], buflen - pret, "DIAFAN", 6)) {
-                    success_checked(domain);
-                }
-                else {
-  
-                    if(++domain->index_search < (sizeof(search_path)/sizeof(search_path[0]))) {
-                        //ares_gethostbyname(domain->options->ares.channel, domain->domain, AF_INET, ev_ares_dns_callback, (void *) domain);
-                        http_client(domain);
-                        return;
+                case 200:
+                {
+                    if (NULL != my_memmem(&domain->data.buffer[pret], domain->data.len - pret, "diafan", 6) || NULL != my_memmem(&domain->data.buffer[pret], domain->data.len - pret, "DIAFAN", 6)) {
+                        success_checked(domain);
+                    } else {
+
+                        if (++domain->index_search < (sizeof (search_path) / sizeof (search_path[0]))) {
+                            //ares_gethostbyname(domain->options->ares.channel, domain->domain, AF_INET, ev_ares_dns_callback, (void *) domain);
+                            http_client(domain);
+                            return;
+                        }
                     }
+                    break;
                 }
-                break;
+
+
             }
-
-
+        } else {
+            error_parse(domain);
         }
     }
 
-    debug("-- %s checked", domain->domain);
 
+    debug("-- %s %d checked", domain->domain, domain->http.status);
     free_domain(domain);
 }
 
@@ -201,9 +247,9 @@ static void
 timeout_handler(struct ev_loop *loop, struct ev_timer *watcher, int events);
 
 static void write_callback(struct ev_loop *loop, domain_t * domain) {
-    
+
     debug("write_callback %s, search = %s", domain->domain, search_path[domain->index_search]);
-    
+
     char buf[MAXLINE];
 
     ev_io_set(&domain->io, domain->io.fd, EV_READ);
@@ -211,12 +257,16 @@ static void write_callback(struct ev_loop *loop, domain_t * domain) {
 
     ev_timer_set(&domain->tw, MAXRECVTIME, 0);
 
-    
-    size_t len = snprintf(buf, sizeof (buf), http_get, search_path[domain->index_search],domain->domain); /* this is safe */
-    
-    
+
+    size_t len = snprintf(buf, sizeof (buf), http_get, search_path[domain->index_search], domain->domain); /* this is safe */
+
+
 
     if (len == writen(domain->io.fd, buf, len)) {
+
+        //bzero(domain->data.buffer, sizeof(domain->data.buffer));
+        domain->data.len = 0;
+
         ev_io_start(loop, &domain->io);
         ev_timer_start(loop, &domain->tw);
 
@@ -247,7 +297,7 @@ connect_handler(struct ev_loop *loop, struct ev_io *watcher, int events) {
         errno = error;
 
     } else {
-        write_callback(loop,domain);
+        write_callback(loop, domain);
     }
 
 }
@@ -271,13 +321,13 @@ timeout_handler(struct ev_loop *loop, struct ev_timer *watcher, int events) {
 int
 http_client(domain_t * domain) {
 
-    
+
     int sockfd = Socket(AF_INET, SOCK_STREAM, 0);
     int n;
 
     int flags = Fcntl(sockfd, F_GETFL, 0);
     Fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
-    
+
     ev_io_init(&domain->io, connect_handler, sockfd, EV_WRITE);
     ev_io_start(domain->options->loop, &domain->io);
 
@@ -297,44 +347,66 @@ is_valid_location(const char *location, size_t len) {
     bool valid = false;
 
     if (NULL != location) {
-        if (len > 0 && NULL != my_memmem(location, len, "init.php", 8)) {
+        if (len > 0 && location[len - 1] != '/' && NULL != my_memmem(location, len, ".php", 4)) {
+
+            //debug("-- follow location %.*s", 1, &location[len-1]);
 
             char *p = NULL;
+
+
             if (NULL != (p = my_memmem(location, len, "http://", 7))) {
                 p = p + 7;
                 if (NULL == my_memmem(p, len - (p - location), "http://", 7)) {
                     if (NULL == my_memmem(p, len - (p - location), "http/", 5)) {
-                        valid = true;
+                        if (NULL == my_memmem(p, len - (p - location), ".html", 5)) {
+                            valid = true;
+                        }
                     }
                 }
             }
+
+            if (true == valid) {
+                valid = false;
+                int i = 0;
+                for (i = 0; i < sizeof (search_path) / sizeof (search_path[0]); i++) {
+                    size_t s = strlen(search_path[i]);
+                    if (NULL != my_memmem(location, len, search_path[i], s)) {
+                        valid = true;
+                        break;
+                    }
+                }
+            }
+
         }
     }
 
-    if(false == valid) {
+    if (false == valid) {
         debug("- invalid location");
     }
-    
+
     return valid;
-} 
+}
 
 void
 follow_location(domain_t * domain, const char *location, size_t len) {
     debug("-- follow location %.*s", (int) len, location);
-    
+
     __sync_fetch_and_add(&domain->options->counters.follow, 1);
 
     char *host;
     size_t host_len;
-    
-    if(false == is_valid_location(location,len)) return;
+
+    if (false == is_valid_location(location, len)) {
+        free_domain(domain);
+        return;
+    }
 
     if (phr_parse_host(location, len, &host, &host_len) > 0) {
         host[host_len] = 0;
         free(domain->domain);
-        
+
         domain->domain = strdup(host);
-        
+
         ares_gethostbyname(domain->options->ares.channel, domain->domain, AF_INET, ev_ares_dns_callback, (void *) domain);
     }
 

@@ -55,7 +55,7 @@ print_usage(const char * name) {
 static inline void
 print_stat(options_t *options, const long *time_start) {
     fprintf(stdout, "DNS checked domains: %d; found: %d; not found: %d (%d%%);\n\
-CMS fonud: %d; follow location: %d\n\
+CMS fonud: %d; follow location: %d; parse erros: %d\n\
 pending: %d; threads: %d; time: %ld milliseconds\n",
             options->counters.domains,
             options->counters.dnsfound,
@@ -63,6 +63,7 @@ pending: %d; threads: %d; time: %ld milliseconds\n",
             (options->counters.dnsnotfound > 0 ? ((options->counters.dnsnotfound * 100) / options->counters.domains) : 0),
             options->counters.cmsfound,
             options->counters.follow,
+            options->counters.error_parse,
             options->pending_requests,
             1,
             mtime() - *time_start);
@@ -173,6 +174,11 @@ int main(int argc, char** argv) {
 
     if (argc == optind) {
         print_usage(argv[0]);
+    }
+    
+    if ((options.file.parse = open("error_parse.csv", O_CREAT | O_WRONLY,
+                        S_IRUSR | S_IWUSR)) < 0) {
+                    err_sys("[E] open error file %s", optarg);
     }
 
     //debug("proc num %d\n", sysconf(_SC_NPROCESSORS_CONF));
